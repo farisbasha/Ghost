@@ -87,6 +87,7 @@
     "@tryghost/adapter-base-scheduling": "workspace:*",
     "@tryghost/adapter-base-sso": "workspace:*",
     "@tryghost/adapter-base-upgrade": "workspace:*",
+    "@tryghost/admin-api-contracts": "workspace:*",
     "@tryghost/admin-api-schema": "workspace:*",
     "@tryghost/api-framework": "workspace:*",
     "@tryghost/app-contracts": "workspace:*",

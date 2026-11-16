@@ -5,6 +5,7 @@ export { default as pipeline, STAGES } from './pipeline.ts';
 export { default as validators } from './validators/index.ts';
 export { default as serializers } from './serializers/index.ts';
 export * as utils from './utils/index.ts';
+export { defineController } from './define-controller.ts';
 export { defineMethod } from './define-method.ts';
 
 export type {
@@ -15,4 +16,4 @@ export type {
   ValidatedRequest,
 } from './define-method.ts';
 
-export type { Controller, ControllerMethod } from './pipeline.ts';
+export type { Controller, ControllerMethod, PipelineController } from './pipeline.ts';
