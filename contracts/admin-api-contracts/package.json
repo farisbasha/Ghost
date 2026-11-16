@@ -2,7 +2,7 @@
   "name": "@tryghost/admin-api-contracts",
   "version": "private",
   "private": true,
-  "description": "Admin API request contracts: the Zod schemas Ghost core validates Admin API input with",
+  "description": "Admin API contracts: Zod schemas for Admin API requests and responses",
   "license": "MIT",
   "author": "Ghost Foundation",
   "repository": {
