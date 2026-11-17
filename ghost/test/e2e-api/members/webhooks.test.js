@@ -4674,10 +4674,21 @@ describe('Members API', function () {
           member: 'new',
           shipping: 'none',
           phone: 'none',
+          result: 'failed',
+          reason: 'unclassified',
+          owner: 'ghost',
         },
       ]);
       assert.deepEqual(spansOf(metrics, 'stripe.webhook'), [
-        { outcome: 'failure', error: 'Error', type: 'checkout.session.completed' },
+        {
+          outcome: 'failure',
+          error: 'Error',
+          type: 'checkout.session.completed',
+          kind: 'checkout_session',
+          result: 'failed',
+          reason: 'unclassified',
+          owner: 'ghost',
+        },
       ]);
     });
 

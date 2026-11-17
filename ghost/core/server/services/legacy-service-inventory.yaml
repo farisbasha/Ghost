@@ -7595,7 +7595,7 @@ services:
           - core/server/services/stripe/service.js
           - core/server/services/stripe/stripe-service.js
           - core/server/services/stripe/stripe-api.js
-          - core/server/services/stripe/webhook-controller.js
+          - core/server/services/stripe/webhook-controller.ts
         tests:
           - test/unit/server/services/stripe/stripe-api.test.js
           - test/unit/server/services/stripe/webhook-controller.test.js
@@ -7787,7 +7787,7 @@ services:
           - core/server/services/stripe/stripe-service.js
           - core/server/services/stripe/webhook-manager.js
           - core/server/services/stripe/billing-portal-manager.js
-          - core/server/services/stripe/webhook-controller.js
+          - core/server/services/stripe/webhook-controller.ts
           - core/server/services/members/service.js
           - core/server/services/stripe/services/webhook/subscription-event-service.js
           - core/server/services/stripe/stripe-api.js

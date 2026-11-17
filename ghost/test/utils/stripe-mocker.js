@@ -1,5 +1,6 @@
 const DomainEvents = require('@tryghost/domain-events');
 const nock = require('nock');
+const stripe = require('stripe');
 const { z } = require('zod');
 let members = {};
 let stripeService = {};
@@ -647,14 +648,34 @@ class StripeMocker {
   }
 
   /**
-   * Sends a webhook event to the Stripe webhook controller.
+   * Sends a webhook event to the Stripe webhook controller, signed with the test webhook secret, as
+   * Stripe would send it. Rejects when the webhook doesn't respond with 200.
    *
    * @param {any} event - The webhook event to send.
    * @returns {Promise<void>} - A promise that resolves when the webhook event is handled.
    */
   async sendWebhook(event) {
-    const webhookController = stripeService.webhookController;
-    await webhookController.handleEvent(event);
+    const payload = JSON.stringify(event);
+    const req = {
+      body: payload,
+      headers: {
+        'stripe-signature': stripe.webhooks.generateTestHeaderString({
+          payload,
+          secret: process.env.WEBHOOK_SECRET,
+        }),
+      },
+    };
+    let status;
+    const res = {
+      writeHead(code) {
+        status = code;
+      },
+      end() {},
+    };
+    await stripeService.webhookController.handle(req, res);
+    if (status !== 200) {
+      throw new Error(`The Stripe webhook responded with ${status} to ${event.type}`);
+    }
   }
 }
 

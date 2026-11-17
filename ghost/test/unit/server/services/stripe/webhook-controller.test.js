@@ -1,7 +1,9 @@
 const sinon = require('sinon');
 const Stripe = require('stripe');
 const logging = require('@tryghost/logging');
-const WebhookController = require('../../../../../core/server/services/stripe/webhook-controller');
+const {
+  WebhookController,
+} = require('../../../../../core/server/services/stripe/webhook-controller');
 const { createTracer } = require('../../../../../core/server/lib/tracing/create-tracer');
 const { createMeter } = require('../../../../../core/server/lib/tracing/create-meter');
 const { stripeTracking } = require('../../../../../core/server/services/stripe/tracking');
@@ -12,6 +14,8 @@ const tracking = stripeTracking({
   meter: createMeter(shipNothing),
 });
 
+// What the end-to-end tests in `stripe-webhook-outcomes.test.js` can't see: which failures go to
+// Sentry, and the log line for an event at another Stripe API version.
 describe('WebhookController', function () {
   let controller;
   let deps;
@@ -20,11 +24,12 @@ describe('WebhookController', function () {
 
   beforeEach(function () {
     deps = {
+      apiVersion: '2020-08-27',
       subscriptionEventService: { handleSubscriptionEvent: sinon.stub() },
       invoiceEventService: { handleInvoiceEvent: sinon.stub() },
       checkoutSessionEventService: { handleEvent: sinon.stub(), handleDonationEvent: sinon.stub() },
       chargeRefundedEventService: { handleEvent: sinon.stub() },
-      webhookManager: { parseWebhook: sinon.stub() },
+      webhookManager: { webhookSecret: 'whsec_test', parseWebhook: sinon.stub() },
       tracking,
       sentry: { captureException: sinon.stub() },
     };
@@ -80,183 +85,6 @@ describe('WebhookController', function () {
     sinon.assert.notCalled(logging.error);
   });
 
-  it('should return 400 if request body or signature is missing', async function () {
-    req.body = null;
-    await controller.handle(req, res);
-    sinon.assert.calledWith(res.writeHead, 400);
-  });
-
-  it('should return 401 if webhook signature is invalid', async function () {
-    deps.webhookManager.parseWebhook.throws(new Error('Invalid signature'));
-    await controller.handle(req, res);
-    sinon.assert.calledWith(res.writeHead, 401);
-    sinon.assert.called(res.end);
-  });
-
-  it('should handle customer.subscription.created event', async function () {
-    const event = {
-      type: 'customer.subscription.created',
-      data: {
-        object: { customer: 'cust_123' },
-      },
-    };
-    deps.webhookManager.parseWebhook.returns(event);
-
-    await controller.handle(req, res);
-
-    sinon.assert.calledOnce(deps.subscriptionEventService.handleSubscriptionEvent);
-    sinon.assert.calledWith(res.writeHead, 200);
-    sinon.assert.called(res.end);
-  });
-
-  it('should handle invoice.payment_succeeded event', async function () {
-    const event = {
-      type: 'invoice.payment_succeeded',
-      data: {
-        object: { subscription: 'sub_123' },
-      },
-    };
-    deps.webhookManager.parseWebhook.returns(event);
-
-    await controller.handle(req, res);
-
-    sinon.assert.calledOnce(deps.invoiceEventService.handleInvoiceEvent);
-    sinon.assert.calledWith(res.writeHead, 200);
-    sinon.assert.called(res.end);
-
-    // expect(deps.invoiceEventService.handleInvoiceEvent.calledOnce).to.be.true;
-    // expect(res.writeHead.calledWith(200)).to.be.true;
-    // expect(res.end.called).to.be.true;
-  });
-
-  it('should handle checkout.session.completed event', async function () {
-    const event = {
-      type: 'checkout.session.completed',
-      data: {
-        object: { customer: 'cust_123' },
-      },
-    };
-    deps.webhookManager.parseWebhook.returns(event);
-
-    await controller.handle(req, res);
-    sinon.assert.calledOnce(deps.checkoutSessionEventService.handleEvent);
-    sinon.assert.calledWith(res.writeHead, 200);
-    sinon.assert.called(res.end);
-    // expect(deps.checkoutSessionEventService.handleEvent.calledOnce).to.be.true;
-    // expect(res.writeHead.calledWith(200)).to.be.true;
-    // expect(res.end.called).to.be.true;
-  });
-
-  for (const eventType of [
-    'checkout.session.async_payment_succeeded',
-    'checkout.session.async_payment_failed',
-  ]) {
-    it(`should handle ${eventType} event`, async function () {
-      const session = { customer: 'cust_123' };
-      deps.webhookManager.parseWebhook.returns({
-        type: eventType,
-        data: { object: session },
-      });
-
-      await controller.handle(req, res);
-
-      sinon.assert.calledOnceWithExactly(
-        deps.checkoutSessionEventService.handleEvent,
-        session,
-        eventType,
-      );
-      sinon.assert.calledWith(res.writeHead, 200);
-    });
-  }
-
-  it('should handle customer subscription updated event', async function () {
-    const event = {
-      type: 'customer.subscription.updated',
-      data: {
-        object: { customer: 'cust_123' },
-      },
-    };
-
-    deps.webhookManager.parseWebhook.returns(event);
-
-    await controller.handle(req, res);
-
-    sinon.assert.calledOnce(deps.subscriptionEventService.handleSubscriptionEvent);
-    sinon.assert.calledWith(res.writeHead, 200);
-    sinon.assert.called(res.end);
-  });
-
-  it('should ignore customer.subscription.updated events for customers in the ignore list', async function () {
-    const event = {
-      id: 'evt_123',
-      type: 'customer.subscription.updated',
-      data: {
-        object: { customer: 'cust_123' },
-      },
-    };
-
-    controller.configure({ webhookCustomerIgnoreList: ['cust_123'] });
-    deps.webhookManager.parseWebhook.returns(event);
-
-    await controller.handle(req, res);
-
-    sinon.assert.notCalled(deps.subscriptionEventService.handleSubscriptionEvent);
-    sinon.assert.calledWith(res.writeHead, 200);
-    sinon.assert.called(res.end);
-  });
-
-  it('should handle customer.subscription.updated events for customers not in the ignore list', async function () {
-    const event = {
-      type: 'customer.subscription.updated',
-      data: {
-        object: { customer: 'cust_123' },
-      },
-    };
-
-    controller.configure({ webhookCustomerIgnoreList: ['cust_999'] });
-    deps.webhookManager.parseWebhook.returns(event);
-
-    await controller.handle(req, res);
-
-    sinon.assert.calledOnce(deps.subscriptionEventService.handleSubscriptionEvent);
-    sinon.assert.calledWith(res.writeHead, 200);
-    sinon.assert.called(res.end);
-  });
-
-  it('should handle customer.subscription.deleted event', async function () {
-    const event = {
-      type: 'customer.subscription.deleted',
-      data: {
-        object: { customer: 'cust_123' },
-      },
-    };
-
-    deps.webhookManager.parseWebhook.returns(event);
-
-    await controller.handle(req, res);
-
-    sinon.assert.calledOnce(deps.subscriptionEventService.handleSubscriptionEvent);
-    sinon.assert.calledWith(res.writeHead, 200);
-    sinon.assert.called(res.end);
-  });
-
-  it('should return 500 if an error occurs', async function () {
-    const event = {
-      type: 'customer.subscription.created',
-      data: {
-        object: { customer: 'cust_123' },
-      },
-    };
-
-    deps.webhookManager.parseWebhook.returns(event);
-    deps.subscriptionEventService.handleSubscriptionEvent.throws(new Error('Unexpected error'));
-
-    await controller.handle(req, res);
-
-    sinon.assert.calledWith(res.writeHead, 500);
-    sinon.assert.called(res.end);
-  });
-
   it('reports an event it failed to handle to Sentry', async function () {
     const failure = new Error('Unexpected error');
     deps.webhookManager.parseWebhook.returns({
@@ -310,41 +138,5 @@ describe('WebhookController', function () {
 
     sinon.assert.calledOnceWithExactly(res.writeHead, 400);
     sinon.assert.calledOnceWithExactly(deps.sentry.captureException, failure);
-  });
-
-  it('should handle charge.refunded event', async function () {
-    const event = {
-      type: 'charge.refunded',
-      data: {
-        object: { payment_intent: 'pi_123' },
-      },
-    };
-
-    deps.webhookManager.parseWebhook.returns(event);
-
-    await controller.handle(req, res);
-
-    sinon.assert.calledOnce(deps.chargeRefundedEventService.handleEvent);
-    sinon.assert.calledWith(deps.chargeRefundedEventService.handleEvent, {
-      payment_intent: 'pi_123',
-    });
-    sinon.assert.calledWith(res.writeHead, 200);
-    sinon.assert.called(res.end);
-  });
-
-  it('should not handle unknown event type', async function () {
-    const event = {
-      type: 'invalid.event',
-      data: {
-        object: { customer: 'cust_123' },
-      },
-    };
-
-    deps.webhookManager.parseWebhook.returns(event);
-
-    await controller.handle(req, res);
-
-    sinon.assert.calledWith(res.writeHead, 200);
-    sinon.assert.called(res.end);
   });
 });

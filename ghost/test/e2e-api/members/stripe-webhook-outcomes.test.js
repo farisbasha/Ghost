@@ -253,11 +253,17 @@ describe('Stripe webhook outcomes', function () {
         .expectStatus(401);
 
       assert.deepEqual(spansOf(metrics, 'stripe.webhook'), [
-        { outcome: 'failure', error: 'UnauthorizedError' },
+        {
+          outcome: 'failure',
+          error: 'STRIPE_WEBHOOK_SIGNATURE_MISMATCH',
+          result: 'failed',
+          reason: 'signature_mismatch',
+          owner: 'site',
+        },
       ]);
     });
 
-    it('responds with 401 when the site has no webhook secret, and records the error as ERR_INVALID_ARG_TYPE', async function () {
+    it('responds with 401 when the site has no webhook secret', async function () {
       const stripeService = require('../../../core/server/services/stripe');
       const secret = stripeService.webhookManager.webhookSecret;
       stripeService.webhookManager.webhookSecret = null;
@@ -269,7 +275,13 @@ describe('Stripe webhook outcomes', function () {
 
         assert.equal(status, 401);
         assert.deepEqual(spansOf(metrics, 'stripe.webhook'), [
-          { outcome: 'failure', error: 'ERR_INVALID_ARG_TYPE' },
+          {
+            outcome: 'failure',
+            error: 'STRIPE_WEBHOOK_SECRET_MISSING',
+            result: 'failed',
+            reason: 'webhook_secret_missing',
+            owner: 'site',
+          },
         ]);
       } finally {
         stripeService.webhookManager.webhookSecret = secret;
@@ -283,7 +295,13 @@ describe('Stripe webhook outcomes', function () {
 
       assert.equal(status, 200);
       assert.deepEqual(spansOf(metrics, 'stripe.webhook'), [
-        { outcome: 'success', type: 'product.created' },
+        {
+          outcome: 'success',
+          type: 'product.created',
+          kind: 'unhandled',
+          result: 'ignored',
+          reason: 'unhandled_type',
+        },
       ]);
     });
 
@@ -296,7 +314,13 @@ describe('Stripe webhook outcomes', function () {
 
       assert.equal(status, 200);
       assert.deepEqual(spansOf(metrics, 'stripe.webhook'), [
-        { outcome: 'success', type: 'product.created' },
+        {
+          outcome: 'success',
+          type: 'product.created',
+          kind: 'unhandled',
+          result: 'ignored',
+          reason: 'unhandled_type',
+        },
       ]);
     });
 
@@ -308,7 +332,13 @@ describe('Stripe webhook outcomes', function () {
 
         assert.equal(status, 200);
         assert.deepEqual(spansOf(metrics, 'stripe.webhook'), [
-          { outcome: 'success', type: 'customer.subscription.updated', ignored: true },
+          {
+            outcome: 'success',
+            type: 'customer.subscription.updated',
+            kind: 'subscription',
+            result: 'ignored',
+            reason: 'listed_customer',
+          },
         ]);
       } finally {
         stripeService.webhookController.configure({});
@@ -351,6 +381,9 @@ describe('Stripe webhook outcomes', function () {
         {
           outcome: 'failure',
           error: '_OTHER',
+          result: 'failed',
+          reason: 'unclassified',
+          owner: 'ghost',
           type: 'subscription',
           member: 'new',
           shipping: 'none',
@@ -372,6 +405,9 @@ describe('Stripe webhook outcomes', function () {
         {
           outcome: 'failure',
           error: 'ER_NO_REFERENCED_ROW_2',
+          result: 'failed',
+          reason: 'unclassified',
+          owner: 'ghost',
           type: 'subscription',
           member: 'new',
           shipping: 'none',
@@ -393,6 +429,9 @@ describe('Stripe webhook outcomes', function () {
         {
           outcome: 'failure',
           error: '_OTHER',
+          result: 'failed',
+          reason: 'unclassified',
+          owner: 'ghost',
           type: 'subscription',
           member: 'new',
           shipping: 'none',
@@ -411,6 +450,9 @@ describe('Stripe webhook outcomes', function () {
         {
           outcome: 'failure',
           error: 'ValidationError',
+          result: 'failed',
+          reason: 'unclassified',
+          owner: 'ghost',
           type: 'subscription',
           member: 'new',
           shipping: 'none',
@@ -433,6 +475,9 @@ describe('Stripe webhook outcomes', function () {
         {
           outcome: 'failure',
           error: 'lock_timeout',
+          result: 'failed',
+          reason: 'stripe_unavailable',
+          owner: 'dependency',
           type: 'subscription',
           shipping: 'none',
           phone: 'none',
@@ -454,6 +499,9 @@ describe('Stripe webhook outcomes', function () {
         {
           outcome: 'failure',
           error: 'platform_api_key_expired',
+          result: 'failed',
+          reason: 'stripe_access_revoked',
+          owner: 'site',
           type: 'subscription',
           shipping: 'none',
           phone: 'none',
@@ -479,6 +527,9 @@ describe('Stripe webhook outcomes', function () {
         {
           outcome: 'failure',
           error: 'StripeConnectionError',
+          result: 'failed',
+          reason: 'stripe_unavailable',
+          owner: 'dependency',
           type: 'subscription',
           shipping: 'none',
           phone: 'none',
@@ -564,7 +615,12 @@ describe('Stripe webhook outcomes', function () {
 
       assert.equal(status, 200);
       assert.deepEqual(spansOf(metrics, 'stripe.webhook'), [
-        { outcome: 'success', type: 'customer.subscription.updated' },
+        {
+          outcome: 'success',
+          type: 'customer.subscription.updated',
+          kind: 'subscription',
+          result: 'handled',
+        },
       ]);
     });
 
@@ -604,7 +660,15 @@ describe('Stripe webhook outcomes', function () {
 
       assert.equal(status, 400);
       assert.deepEqual(spansOf(metrics, 'stripe.webhook'), [
-        { outcome: 'failure', error: 'ValidationError', type: 'customer.subscription.updated' },
+        {
+          outcome: 'failure',
+          error: 'ValidationError',
+          type: 'customer.subscription.updated',
+          kind: 'subscription',
+          result: 'failed',
+          reason: 'unclassified',
+          owner: 'ghost',
+        },
       ]);
     });
 
@@ -621,7 +685,15 @@ describe('Stripe webhook outcomes', function () {
 
       assert.equal(status, 400);
       assert.deepEqual(spansOf(metrics, 'stripe.webhook'), [
-        { outcome: 'failure', error: 'BadRequestError', type: 'customer.subscription.updated' },
+        {
+          outcome: 'failure',
+          error: 'STRIPE_WEBHOOK_UNSUPPORTED_SUBSCRIPTION',
+          type: 'customer.subscription.updated',
+          kind: 'subscription',
+          result: 'failed',
+          reason: 'unsupported_subscription',
+          owner: 'site',
+        },
       ]);
     });
   });
@@ -671,7 +743,12 @@ describe('Stripe webhook outcomes', function () {
 
       assert.equal(status, 200);
       assert.deepEqual(spansOf(metrics, 'stripe.webhook'), [
-        { outcome: 'success', type: 'invoice.payment_succeeded' },
+        {
+          outcome: 'success',
+          type: 'invoice.payment_succeeded',
+          kind: 'invoice',
+          result: 'handled',
+        },
       ]);
     });
 
@@ -706,7 +783,15 @@ describe('Stripe webhook outcomes', function () {
 
       assert.equal(status, 404);
       assert.deepEqual(spansOf(metrics, 'stripe.webhook'), [
-        { outcome: 'failure', error: 'NotFoundError', type: 'invoice.payment_succeeded' },
+        {
+          outcome: 'failure',
+          error: 'STRIPE_WEBHOOK_NO_MEMBER_FOR_CUSTOMER',
+          type: 'invoice.payment_succeeded',
+          kind: 'invoice',
+          result: 'failed',
+          reason: 'no_member_for_customer',
+          owner: 'site',
+        },
       ]);
     });
 
@@ -721,6 +806,10 @@ describe('Stripe webhook outcomes', function () {
         {
           outcome: 'failure',
           error: 'platform_api_key_expired',
+          kind: 'invoice',
+          result: 'failed',
+          reason: 'stripe_access_revoked',
+          owner: 'site',
           type: 'invoice.payment_succeeded',
         },
       ]);
@@ -738,7 +827,7 @@ describe('Stripe webhook outcomes', function () {
 
       assert.equal(status, 200);
       assert.deepEqual(spansOf(metrics, 'stripe.webhook'), [
-        { outcome: 'success', type: 'charge.refunded' },
+        { outcome: 'success', type: 'charge.refunded', kind: 'refund', result: 'handled' },
       ]);
     });
   });
