@@ -912,6 +912,109 @@ describe('MailgunClient', function () {
         assert.equal(response.id, '<20260916041835.abc@domain.com>');
       });
 
+      it('uses Message-Ids supplied by the caller', async function () {
+        stubMailgunConfig();
+        const message = {
+          subject: 'Test Subject',
+          from: 'from@example.com',
+          html: '<p>Test Content</p>',
+          plaintext: 'Test Content',
+          recipientMessageIds: {
+            'first@example.com': 'step-1.aaa@domain.com',
+            'second@example.com': 'step-2.bbb@domain.com',
+          },
+        };
+        // Mailgun echoes the header template, as the NY-1811 spike confirmed
+        let capturedBody;
+        const sendMock = nock('https://api.mailgun.net')
+          .post('/v3/domain.com/messages', function (body) {
+            capturedBody = body;
+            return true;
+          })
+          .reply(200, { id: '<%recipient.message_id%>', message: 'Queued. Thank you.' });
+
+        const mailgunClient = new MailgunClient({ config, settings });
+        const response = await mailgunClient.send(message, createRecipientData(), []);
+
+        assert(sendMock.isDone());
+        assert.equal(response.id, null);
+        assert.equal(getFormField(capturedBody, 'h:Message-Id'), '<%recipient.message_id%>');
+        const recipientVariables = JSON.parse(getFormField(capturedBody, 'recipient-variables'));
+        assert.deepEqual(recipientVariables, {
+          'first@example.com': {
+            name: 'First',
+            list_unsubscribe: 'https://example.com/unsub/1',
+            message_id: 'step-1.aaa@domain.com',
+          },
+          'second@example.com': {
+            name: 'Second',
+            list_unsubscribe: 'https://example.com/unsub/2',
+            message_id: 'step-2.bbb@domain.com',
+          },
+        });
+      });
+
+      it('prefers caller-supplied Message-Ids over computed ones', async function () {
+        stubMailgunConfig();
+        const { captured, sendMock } = captureSend();
+
+        const mailgunClient = new MailgunClient({ config, settings });
+        await mailgunClient.send(
+          {
+            subject: 'Test Subject',
+            from: 'from@example.com',
+            html: '<p>Test Content</p>',
+            plaintext: 'Test Content',
+            id: EMAIL_ID,
+            perRecipientMessageId: true,
+            recipientMessageIds: {
+              'first@example.com': 'one@domain.com',
+              'second@example.com': 'two@domain.com',
+            },
+          },
+          createRecipientData(),
+          [],
+        );
+
+        assert(sendMock.isDone());
+        const recipientVariables = JSON.parse(getFormField(captured.body, 'recipient-variables'));
+        assert.equal(recipientVariables['first@example.com'].message_id, 'one@domain.com');
+        assert.equal(recipientVariables['second@example.com'].message_id, 'two@domain.com');
+      });
+
+      for (const [description, secondId] of [
+        ['has no supplied Message-Id', undefined],
+        ['has a supplied Message-Id in angle brackets', '<two@domain.com>'],
+        ['has a supplied Message-Id with whitespace', 'two @domain.com'],
+      ]) {
+        it(`refuses to send when a recipient ${description}`, async function () {
+          stubMailgunConfig();
+          const sendMock = nock('https://api.mailgun.net')
+            .post('/v3/domain.com/messages')
+            .reply(200);
+
+          const mailgunClient = new MailgunClient({ config, settings });
+          await assert.rejects(
+            mailgunClient.send(
+              {
+                subject: 'Test Subject',
+                from: 'from@example.com',
+                html: '<p>Test Content</p>',
+                plaintext: 'Test Content',
+                recipientMessageIds: {
+                  'first@example.com': 'one@domain.com',
+                  ...(secondId === undefined ? {} : { 'second@example.com': secondId }),
+                },
+              },
+              createRecipientData(),
+              [],
+            ),
+            { errorType: 'IncorrectUsageError' },
+          );
+          assert(!sendMock.isDone());
+        });
+      }
+
       it('does not mutate the recipient data passed in', async function () {
         stubMailgunConfig();
         const message = {

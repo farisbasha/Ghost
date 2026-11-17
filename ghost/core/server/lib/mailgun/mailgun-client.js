@@ -7,6 +7,7 @@ const {
   addRecipientMessageIds,
   isTemplatedRecipientMessageId,
   RECIPIENT_MESSAGE_ID_VARIABLE,
+  setRecipientMessageIds,
 } = require('./mailgun-recipient-message-id');
 
 const DEFAULT_BATCH_SIZE = 1000;
@@ -24,7 +25,8 @@ module.exports = class MailgunClient {
    * Creates the data payload and sends to Mailgun
    *
    * @param {Object} message
-   * @param {boolean} [message.perRecipientMessageId] Give every recipient its own Message-Id header
+   * @param {boolean} [message.perRecipientMessageId] Give every recipient its own Message-Id header, derived from `message.id`
+   * @param {Record<string, string>} [message.recipientMessageIds] Message-Ids the caller computed, keyed by recipient address and without angle brackets; takes precedence over `perRecipientMessageId`
    * @param {Object} recipientData
    * @param {Array<Object>} replacements
    *
@@ -50,6 +52,11 @@ module.exports = class MailgunClient {
         message: `Mailgun only supports sending to ${batchSize} recipients at a time`,
       });
     }
+
+    // checked before the try so a bad id is reported as a caller error, not as a failed send
+    const recipientDataWithCallerMessageIds = message.recipientMessageIds
+      ? setRecipientMessageIds(recipientData, message.recipientMessageIds)
+      : undefined;
 
     let messageData = {};
 
@@ -124,11 +131,16 @@ module.exports = class MailgunClient {
       // Use overriden domain if specified in message
       const mailDomain = message.domainOverride ? message.domainOverride : mailgunConfig.domain;
 
-      if (message.perRecipientMessageId === true) {
-        // one Message-Id per recipient, referenced from a recipient variable like List-Unsubscribe above
-        messageData['recipient-variables'] = JSON.stringify(
-          addRecipientMessageIds(recipientData, { emailId: message.id, domain: mailDomain }),
-        );
+      // one Message-Id per recipient, referenced from a recipient variable like List-Unsubscribe above
+      let recipientDataWithMessageIds = recipientDataWithCallerMessageIds;
+      if (!recipientDataWithMessageIds && message.perRecipientMessageId === true) {
+        recipientDataWithMessageIds = addRecipientMessageIds(recipientData, {
+          emailId: message.id,
+          domain: mailDomain,
+        });
+      }
+      if (recipientDataWithMessageIds) {
+        messageData['recipient-variables'] = JSON.stringify(recipientDataWithMessageIds);
         messageData['h:Message-Id'] = `<%recipient.${RECIPIENT_MESSAGE_ID_VARIABLE}%>`;
       }
 
