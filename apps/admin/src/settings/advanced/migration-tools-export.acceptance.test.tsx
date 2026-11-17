@@ -120,8 +120,9 @@ describe('Migration tools export', () => {
       .not.toBeInTheDocument();
   });
 
-  it('offers media and email delivery when an export host is configured', async () => {
+  it('downloads exports without media in the browser when an export host is configured', async () => {
     fakeSettingsScreens();
+    const download = fakeExportDownload();
     const exportsApi = fakeAdminEndpoint('POST', '/exports/', {}, { status: 202 });
     await renderWithExportHost();
 
@@ -129,27 +130,28 @@ describe('Migration tools export', () => {
     await section.getByRole('button', { name: 'All data' }).click();
 
     const dialog = page.getByRole('dialog');
+    await expect.element(dialog.getByText('Media files', { exact: true })).toBeVisible();
+    await expect
+      .element(dialog.getByText('downloaded as a single zip', { exact: false }))
+      .toBeVisible();
+
+    // The copy follows the media checkbox
+    await dialog.getByText('Media files', { exact: true }).click();
     await expect
       .element(dialog.getByText('download link emailed to you', { exact: false }))
       .toBeVisible();
-    await expect.element(dialog.getByText('Media files', { exact: true })).toBeVisible();
+    await dialog.getByText('Media files', { exact: true }).click();
+    await expect
+      .element(dialog.getByText('downloaded as a single zip', { exact: false }))
+      .toBeVisible();
 
     await dialog.getByRole('button', { name: 'Export', exact: true }).click();
-    await expect.element(dialog.getByText('Exporting data', { exact: false })).toBeVisible();
 
-    // The default selection: everything except media
-    await expect
-      .poll(() => exportsApi.lastRequest?.body)
-      .toEqual({
-        components: {
-          content: true,
-          members: true,
-          analytics: true,
-          themes: true,
-          routes: true,
-          media: false,
-        },
-      });
+    await expect.element(dialog.getByText('Export complete', { exact: false })).toBeVisible();
+    expect(download.lastRequest?.url).toContain(
+      '/exports/download/?components=content,members,analytics,themes,routes',
+    );
+    expect(exportsApi.lastRequest).toBeUndefined();
   });
 
   it('keeps the dialog open while the export request is in flight', async () => {
@@ -173,6 +175,7 @@ describe('Migration tools export', () => {
     await section.getByRole('button', { name: 'All data' }).click();
 
     const dialog = page.getByRole('dialog');
+    await dialog.getByText('Media files', { exact: true }).click();
     await dialog.getByRole('button', { name: 'Export', exact: true }).click();
 
     // Non-idempotent request: the dialog must not be dismissible while pending
@@ -186,8 +189,9 @@ describe('Migration tools export', () => {
     await expect.element(dialog.getByText('Exporting data', { exact: false })).toBeVisible();
   });
 
-  it('sends the selected components to the exports endpoint', async () => {
+  it('emails exports with media when an export host is configured', async () => {
     fakeSettingsScreens();
+    const download = fakeExportDownload();
     const exportsApi = fakeAdminEndpoint('POST', '/exports/', {}, { status: 202 });
     await renderWithExportHost();
 
@@ -213,6 +217,7 @@ describe('Migration tools export', () => {
           media: true,
         },
       });
+    expect(download.lastRequest).toBeUndefined();
   });
 
   it('stays on the selection and surfaces an error when the export request fails', async () => {
@@ -225,6 +230,7 @@ describe('Migration tools export', () => {
     await section.getByRole('button', { name: 'All data' }).click();
 
     const dialog = page.getByRole('dialog');
+    await dialog.getByText('Media files', { exact: true }).click();
     await dialog.getByRole('button', { name: 'Export', exact: true }).click();
 
     await expect

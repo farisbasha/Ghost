@@ -96,6 +96,7 @@ const ExportAllModal: React.FC<{
     (component) => mode === 'async' || !component.asyncOnly,
   );
   const noneSelected = visibleComponents.every((component) => !selected[component.key]);
+  const isAsyncExport = mode === 'async' && selected.media;
 
   const handleOpenChange = (next: boolean) => {
     // The export request is not idempotent: closing mid-flight would
@@ -116,7 +117,7 @@ const ExportAllModal: React.FC<{
   };
 
   const startExport = async () => {
-    if (mode === 'async') {
+    if (isAsyncExport) {
       try {
         const components = Object.fromEntries(
           visibleComponents.map((component) => [component.key, selected[component.key]]),
@@ -167,8 +168,10 @@ const ExportAllModal: React.FC<{
             <DialogHeader>
               <DialogTitle>Export data</DialogTitle>
               <DialogDescription>
-                {mode === 'async' ? (
+                {isAsyncExport ? (
                   'Choose what to include. Your export will be prepared in the background and a download link emailed to you.'
+                ) : mode === 'async' ? (
+                  'Choose what to include. Your export will be downloaded as a single zip file.'
                 ) : (
                   <>
                     Your export will be downloaded as a single zip file. Images, videos and files
