@@ -96,6 +96,11 @@ const features: Feature[] = [
       'Open Help in a sidebar inside Admin instead of a new tab. Needs a host script that provides the support app.',
     flag: 'inAppSupport',
   },
+  {
+    title: 'Comments analytics',
+    description: 'Show comment volume, top posts and top commenters beside the comments list.',
+    flag: 'commentsAnalytics',
+  },
 ];
 
 const AlphaFeatures: React.FC = () => {
