@@ -298,7 +298,7 @@ describe('Stripe webhook outcomes', function () {
         {
           outcome: 'success',
           type: 'product.created',
-          kind: 'unhandled',
+          kind: 'ignored',
           result: 'ignored',
           reason: 'unhandled_type',
         },
@@ -317,7 +317,7 @@ describe('Stripe webhook outcomes', function () {
         {
           outcome: 'success',
           type: 'product.created',
-          kind: 'unhandled',
+          kind: 'ignored',
           result: 'ignored',
           reason: 'unhandled_type',
         },
@@ -548,8 +548,15 @@ describe('Stripe webhook outcomes', function () {
       });
 
       assert.equal(status, 200);
-      assert.deepEqual(spansOf(metrics, 'stripe_checkout.complete'), [
-        { outcome: 'success', shipping: 'none', phone: 'none' },
+      assert.deepEqual(spansOf(metrics, 'stripe_checkout.complete'), []);
+      assert.deepEqual(spansOf(metrics, 'stripe.webhook'), [
+        {
+          outcome: 'success',
+          type: 'checkout.session.completed',
+          kind: 'ignored',
+          result: 'ignored',
+          reason: 'not_a_ghost_checkout',
+        },
       ]);
     });
 
@@ -564,8 +571,15 @@ describe('Stripe webhook outcomes', function () {
       });
 
       assert.equal(status, 200);
-      assert.deepEqual(spansOf(metrics, 'stripe_checkout.complete'), [
-        { outcome: 'success', shipping: 'none', phone: 'none' },
+      assert.deepEqual(spansOf(metrics, 'stripe_checkout.complete'), []);
+      assert.deepEqual(spansOf(metrics, 'stripe.webhook'), [
+        {
+          outcome: 'success',
+          type: 'checkout.session.completed',
+          kind: 'ignored',
+          result: 'ignored',
+          reason: 'conflicting_checkout_markers',
+        },
       ]);
     });
 
@@ -603,8 +617,15 @@ describe('Stripe webhook outcomes', function () {
       });
 
       assert.equal(status, 200);
-      assert.deepEqual(spansOf(metrics, 'stripe_checkout.complete'), [
-        { outcome: 'success', shipping: 'none', phone: 'none' },
+      assert.deepEqual(spansOf(metrics, 'stripe_checkout.complete'), []);
+      assert.deepEqual(spansOf(metrics, 'stripe.webhook'), [
+        {
+          outcome: 'success',
+          type: 'checkout.session.async_payment_failed',
+          kind: 'ignored',
+          result: 'ignored',
+          reason: 'payment_failed',
+        },
       ]);
     });
   });
