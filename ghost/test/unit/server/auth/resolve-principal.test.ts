@@ -4,6 +4,8 @@ import type { ApiKey, Principal, Session, User } from '../../../../core/server/a
 import { applyPrincipal } from '../../../../core/server/auth/principal';
 import {
   createPrincipalResolver,
+  fromApiKey,
+  legacyAdminApi,
   type ResolvePrincipalDeps,
 } from '../../../../core/server/auth/resolve-principal';
 
@@ -253,6 +255,72 @@ describe('resolvePrincipal', function () {
 
       assert.deepEqual(req.auth, { kind: 'anonymous' });
     });
+  });
+});
+
+describe('legacy principal', function () {
+  it('reads a session user the session middleware set', async function () {
+    const { req, error } = await run(legacyAdminApi, {
+      ...withCookie(),
+      api_key: null,
+      user: owner,
+    });
+
+    assert.equal(error, undefined);
+    assert.deepEqual(req.auth, { kind: 'user', method: 'session', user: owner });
+    assert.equal(req.user, owner);
+    assert.equal(req.api_key, null);
+  });
+
+  it('reads a staff token', async function () {
+    const apiKey = model('key', { user_id: 'owner', type: 'admin' }) as ApiKey;
+    const { req } = await run(legacyAdminApi, { api_key: apiKey, user: owner });
+
+    assert.deepEqual(req.auth, { kind: 'user', method: 'staff_token', user: owner, apiKey });
+    assert.equal(req.user, owner);
+    assert.equal(req.api_key, apiKey);
+  });
+
+  it('reads an integration key', async function () {
+    const integration = model('integration');
+    const apiKey = Object.assign(model('key', { integration_id: 'integration', type: 'admin' }), {
+      relations: { integration },
+    }) as ApiKey;
+    const { req } = await run(legacyAdminApi, { api_key: apiKey, user: null });
+
+    assert.deepEqual(req.auth, {
+      kind: 'integration',
+      method: 'admin_api_key',
+      apiKey,
+      integration,
+    });
+    assert.equal(req.user, null);
+    assert.equal(req.api_key, apiKey);
+  });
+
+  it('is anonymous when nothing authenticated', async function () {
+    const { req } = await run(legacyAdminApi, { ...withCookie(), api_key: null });
+
+    assert.deepEqual(req.auth, { kind: 'anonymous' });
+    assert.equal(req.user, undefined);
+    assert.equal(req.api_key, null);
+  });
+
+  it('reads a content key', async function () {
+    const integration = model('integration');
+    const apiKey = Object.assign(model('key', { type: 'content' }), {
+      relations: { integration },
+    }) as ApiKey;
+    const { req } = await run(fromApiKey('content_api_key'), { api_key: apiKey });
+
+    assert.deepEqual(req.auth, {
+      kind: 'integration',
+      method: 'content_api_key',
+      apiKey,
+      integration,
+    });
+    assert.equal(req.user, undefined);
+    assert.equal(req.api_key, apiKey);
   });
 });
 

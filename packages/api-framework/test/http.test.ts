@@ -78,6 +78,7 @@ describe('HTTP', function () {
         integration: null,
         user: null,
         member: null,
+        principal: null,
       },
     });
   });
@@ -210,6 +211,23 @@ describe('HTTP', function () {
         assert.equal(frame.options.context.api_key.id, 'api-key-id');
         assert.equal(frame.options.context.integration, null);
         assert.equal(frame.options.context.user, 'user-id');
+        resolve();
+      });
+
+      shared.http(apiImpl)(req, res, next);
+    });
+  });
+
+  it('passes the principal into the context', async function () {
+    await new Promise<void>((resolve) => {
+      const principal = { kind: 'anonymous' };
+      req.auth = principal;
+
+      const apiImpl = sinon.stub().resolves({ ok: true });
+
+      res.json.callsFake(() => {
+        const frame = apiImpl.firstCall.firstArg;
+        assert.equal(frame.options.context.principal, principal);
         resolve();
       });
 

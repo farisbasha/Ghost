@@ -43,6 +43,38 @@ export function principalFromApiKey(
   return { kind: 'integration', method, apiKey, integration: integration ?? null };
 }
 
+/** Runs after a key middleware that has no cookie fallback. */
+export function fromApiKey(method: 'admin_api_key' | 'content_api_key'): RequestHandler {
+  return function resolveKeyPrincipal(req: Request, _res: Response, next: NextFunction) {
+    const keyed = req as ApiKeyRequest;
+    applyPrincipal(
+      keyed,
+      keyed.api_key ? principalFromApiKey(keyed.api_key, keyed.user, method) : ANONYMOUS,
+    );
+    next();
+  };
+}
+
+/**
+ * The legacy engine's Admin API principal, read from what the key and session
+ * middleware already set, so `req.user` and `req.api_key` keep their values.
+ */
+export const legacyAdminApi: RequestHandler = function resolveLegacyAdminPrincipal(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+) {
+  const keyed = req as ApiKeyRequest;
+  let principal: Principal = ANONYMOUS;
+  if (keyed.api_key) {
+    principal = principalFromApiKey(keyed.api_key, keyed.user, 'admin_api_key');
+  } else if (keyed.user) {
+    principal = { kind: 'user', method: 'session', user: keyed.user };
+  }
+  applyPrincipal(keyed, principal);
+  next();
+};
+
 export function createPrincipalResolver(deps: ResolvePrincipalDeps) {
   /**
    * The cookie branch: Better Auth's session, pinned to the admin origin and
@@ -121,18 +153,6 @@ export function createPrincipalResolver(deps: ResolvePrincipalDeps) {
       next(err);
     }
   };
-
-  /** Runs after a key middleware that has no cookie fallback. */
-  function fromApiKey(method: 'admin_api_key' | 'content_api_key'): RequestHandler {
-    return function resolveKeyPrincipal(req: Request, _res: Response, next: NextFunction) {
-      const keyed = req as ApiKeyRequest;
-      applyPrincipal(
-        keyed,
-        keyed.api_key ? principalFromApiKey(keyed.api_key, keyed.user, method) : ANONYMOUS,
-      );
-      next();
-    };
-  }
 
   return {
     adminApi,

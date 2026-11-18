@@ -1,5 +1,5 @@
 import type { RequestHandler } from 'express';
-import { createPrincipalResolver } from './resolve-principal';
+import { createPrincipalResolver, fromApiKey, legacyAdminApi } from './resolve-principal';
 import session from './session';
 import apiKeyAuth from './api-key';
 import * as members from './members';
@@ -13,12 +13,14 @@ export interface Authenticate {
 // Its Req type requires req.session, but the session service loads it itself
 const sessionAuthenticate = session.authenticate as unknown as RequestHandler;
 
+// Each chain sets req.auth from what its key and session middleware resolved
 const legacy: Authenticate = {
-  authenticateAdminApi: [apiKeyAuth.admin.authenticate, sessionAuthenticate],
-  authenticateAdminApiWithUrl: [apiKeyAuth.admin.authenticateWithUrl],
+  authenticateAdminApi: [apiKeyAuth.admin.authenticate, sessionAuthenticate, legacyAdminApi],
+  authenticateAdminApiWithUrl: [apiKeyAuth.admin.authenticateWithUrl, fromApiKey('admin_api_key')],
 
   authenticateContentApi: [
     apiKeyAuth.content.authenticateContentApiKey,
+    fromApiKey('content_api_key'),
     members.authenticateMembersToken,
   ],
 };

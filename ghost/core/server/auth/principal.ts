@@ -43,6 +43,7 @@ export type Principal =
       integration: Integration | null;
       scopes?: Scopes;
     }
+  // The `app` kind for app tokens goes here once its shape is agreed (PLA-631)
   | { kind: 'internal' }
   | { kind: 'anonymous' };
 

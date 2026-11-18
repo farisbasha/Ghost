@@ -410,7 +410,12 @@ if (config.get('auth:engine') === 'better-auth') {
 
 Compatibility routes stay in `routes.js` with their rate-limiting
 middleware. `mw.authAdminApi` uses `resolvePrincipal` when `auth:engine` is
-`better-auth`.
+`better-auth`. Under `legacy`, the existing key and session middleware run as
+before and the chain ends by building the same `Principal` from `req.user` and
+`req.api_key`, so both engines set `req.auth`. The API framework passes it as
+`frame.options.context.principal`, and `parseContext` keeps its kind and
+scopes; a request with a principal is public only when it is anonymous or
+uses a content key.
 
 ## 4. Data model
 
