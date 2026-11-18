@@ -6,7 +6,6 @@ import passwordreset from '../../../../core/server/auth/passwordreset';
 import models from '../../../../core/server/models';
 // @ts-expect-error This module lacks type definitions.
 import ghostBookshelf from '../../../../core/server/models/base';
-import configUtils from '../../../utils/config-utils';
 
 type TestUser = {
   get(key: 'password'): string;
@@ -29,8 +28,6 @@ describe('Password reset token compatibility', function () {
   let changePassword: sinon.SinonStub;
 
   beforeEach(async function () {
-    // Passwords in users.password; the credential row path has e2e tests
-    configUtils.set('auth:betterAuthDev', false);
     replacementHash = await security.password.hash('replacement-test-only');
     user = new models.User({
       id: '000000000000000000000001',
@@ -45,9 +42,23 @@ describe('Password reset token compatibility', function () {
     };
     sinon.stub(models.User, 'getByEmail').resolves(user);
     sinon.stub(models.User.prototype, 'fetch').resolves(user);
+    // A Knex stand-in whose credential row holds the user's current hash
+    const credentialRow = () => {
+      const query = {
+        where: () => query,
+        first: () => query,
+        forUpdate: () => query,
+        then: (resolve: (row: { password: string }) => unknown) =>
+          resolve({ password: user.get('password') }),
+      };
+      return query;
+    };
+    sinon.stub(ghostBookshelf, 'knex').value(credentialRow);
     sinon
       .stub(ghostBookshelf, 'transaction')
-      .callsFake(async (callback: (transaction: object) => Promise<unknown>) => callback({}));
+      .callsFake(async (callback: (transaction: object) => Promise<unknown>) =>
+        callback(credentialRow),
+      );
     changePassword = sinon.stub(models.User, 'changePassword').callsFake(async () => {
       user.set('password', replacementHash);
       return user;
@@ -55,9 +66,8 @@ describe('Password reset token compatibility', function () {
     sinon.stub(user, 'save').resolves(user);
   });
 
-  afterEach(async function () {
+  afterEach(function () {
     sinon.restore();
-    await configUtils.restore();
   });
 
   it('generates a reset token with the published security API', async function () {

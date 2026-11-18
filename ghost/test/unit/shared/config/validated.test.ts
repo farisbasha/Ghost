@@ -293,6 +293,44 @@ describe('Config Schema', function () {
     });
   });
 
+  describe('auth', function () {
+    const mysql = {
+      client: 'mysql2',
+      connection: { host: '127.0.0.1', user: 'root', password: '', database: 'ghost' },
+    };
+
+    it('keeps better-auth on MySQL', function () {
+      const parsed = configSchema.parse({
+        ...configSources(),
+        database: mysql,
+        auth: { engine: 'better-auth' },
+      });
+
+      assert.equal(parsed.auth.engine, 'better-auth');
+    });
+
+    it('falls back to legacy on SQLite, with a warning', function () {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      for (const client of ['sqlite3', 'better-sqlite3']) {
+        const parsed = configSchema.parse({
+          ...configSources(),
+          database: { client, connection: { filename: '/a.db' } },
+          auth: { engine: 'better-auth' },
+        });
+        assert.equal(parsed.auth.engine, 'legacy');
+      }
+      assert.match(String(warn.mock.calls[0]?.[0]), /needs MySQL/);
+    });
+
+    it('does not warn for legacy on SQLite', function () {
+      const warn = vi.spyOn(console, 'warn');
+
+      assert.equal(configSchema.parse(configSources()).auth.engine, 'legacy');
+      assert.equal(warn.mock.calls.length, 0);
+    });
+  });
+
   describe('spam', function () {
     const withSpam = (spam: Record<string, unknown>) =>
       configSources({ spam: _.merge({}, readJson('defaults.json').spam, spam) });

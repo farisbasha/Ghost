@@ -243,8 +243,9 @@ or an upstream contribution later (Better Auth has no Knex adapter).
 - No `createSchema`: Ghost migrations own DDL.
 - Tested with Better Auth's adapter suite (`@better-auth/test-utils/adapter`)
   against MySQL in the database CI lane, plus ObjectId and date cases.
-- `create-auth.ts` refuses any `auth:engine` other than `legacy` on SQLite, or
-  when the tables it needs do not exist, with one clear boot error.
+- On SQLite the config schema turns `auth:engine=better-auth` into `legacy`
+  and warns, so flipping the default (Phase 9) leaves SQLite installs on
+  legacy until 7.0.
 
 ### 3.3 Ghost plugins
 
@@ -485,9 +486,9 @@ store `emailVerified: false`, so they stay.
 ### 4.4 Credential seeding
 
 Each user needs a `credential` row in `user_accounts` with the hash from
-`users.password`. While the table is in development a dev/test boot seeder
-creates them; on graduation a transactional, idempotent migration in the same
-version folder backfills them.
+`users.password`. While the table was in development a dev/test boot seeder
+created them. The tables graduated in 6.79, where a transactional, idempotent
+migration backfills them and the seeder is gone.
 
 ### 4.5 Passwords
 
@@ -902,6 +903,29 @@ integration API responses.
   sign in again; passwords keep working because both engines use
   `user_accounts` (§4.5). Magic links and Bearer
   tokens stop until the engine is switched back.
+- Rollback to a release from before the tables graduated (Phase 3, step 5)
+  is different: that release reads `users.password` again, and ignores
+  `user_accounts`. The graduation backfill copies hashes into
+  `user_accounts` and leaves `users.password` as it is, so staff whose
+  password hasn't changed since the upgrade still sign in. Anyone whose
+  password changed since then (through either engine, including a reset,
+  setup or an accepted invitation) has the `!` placeholder or their old hash
+  in `users.password`, so they can't sign in, or sign in with the old
+  password. Also, that release refuses to boot with `auth:engine` set to
+  `better-auth`, since it still needs `auth:betterAuthDev`.
+  - Rolling the migrations back too (`knex-migrator rollback`, as
+    `ghost update --rollback` does) is safe: the backfill's `down` copies
+    every changed hash back into `users.password` before the tables are
+    dropped.
+  - Rolling back the code alone leaves the tables and their rows in place.
+    The operator sets `auth:engine` to `legacy` and copies the hashes back
+    by hand before staff sign in:
+    `UPDATE users u JOIN user_accounts a ON a.user_id = u.id AND a.provider_id = 'credential' SET u.password = a.password WHERE a.password IS NOT NULL AND a.password <> '!' AND a.password <> u.password;`.
+    Without that, affected staff reset their passwords by email. Upgrading
+    again later doesn't rerun the backfill, so a password changed while
+    rolled back is lost, and staff added meanwhile have no credential row:
+    copy `users.password` into `user_accounts` first (inserting missing
+    rows), or have them reset their passwords.
 - Monitor sign-in outcomes by method, verification sends and failures, Bearer
   verifications and scope denials, `Ghost` scheme usage per key and
   `onAPIError`.
@@ -911,7 +935,7 @@ integration API responses.
 | Risk                                                           | Mitigation                                                                                          |
 | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | Table count on Ghost(Pro)                                      | In-development until shipped; migration review; Redis secondary storage for high-churn tables later |
-| SQLite cannot run Better Auth                                  | Boot refuses the new engine on SQLite; legacy until 7.0                                             |
+| SQLite cannot run Better Auth                                  | SQLite falls back to legacy with a warning; legacy until 7.0                                        |
 | Unverified sessions accepted by Better Auth endpoints          | Global before-hook in `ghostDeviceVerification`; e2e test                                           |
 | Bearer tokens widen attack surface                             | Hashed, scoped, expiring, revocable, role-capped, rate-limited, shown once; reset revokes all       |
 | Better Auth's rate limiter lacks success reset                 | `customStorage` over the `spam` limiters; an after-hook clears `userLogin` on success               |
